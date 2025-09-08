@@ -31,146 +31,426 @@ function createBarcodeToken(payload = {}) {
 async function createPdfBuffer(booking, flight, qrBuffer) {
   return new Promise(async (resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const doc = new PDFDocument({ 
+        size: 'A4', 
+        margin: 50,
+        bufferPages: true,
+        info: {
+          Title: `E-Ticket - ${booking.pnr || booking._id}`,
+          Subject: 'Electronic Airline Ticket',
+          Keywords: 'airline ticket boarding pass e-ticket'
+        }
+      });
+
       const bufs = [];
       doc.on('data', (d) => bufs.push(d));
       doc.on('end', () => resolve(Buffer.concat(bufs)));
 
-      // Styles / measurements
-      const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-      const leftColWidth = pageWidth * 0.62;
-      const rightColWidth = pageWidth - leftColWidth;
-      const qrSize = Math.min(200, rightColWidth - 10);
+      // Page dimensions and layout constants
+      const pageWidth = doc.page.width - 100; // 50px margins on each side
+      const margin = 50;
+      
+      // Color palette
+      const colors = {
+        primary: '#1e3a8a',      // Deep blue
+        secondary: '#3b82f6',    // Bright blue
+        accent: '#ef4444',       // Red for important info
+        dark: '#1f2937',         // Dark gray
+        medium: '#6b7280',       // Medium gray
+        light: '#f3f4f6',        // Light gray
+        white: '#ffffff',
+        success: '#10b981'       // Green for confirmed
+      };
 
-      // Colors
-      const primary = '#0f172a'; // slate-900
-      const accent = '#075985';  // indigo-ish
-      const lightAccent = '#f0f9ff';
+      // Typography helpers
+      const fonts = {
+        regular: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        oblique: 'Helvetica-Oblique'
+      };
 
-      // Header: colored bar with logo/name
-      doc.rect(doc.x - 40, doc.y - 40, pageWidth + 80, 80).fill(accent);
-      doc.fillColor('white').fontSize(18).font('Helvetica-Bold');
+      // Helper functions
+      const drawSection = (title, content, options = {}) => {
+        const { backgroundColor = colors.light, titleColor = colors.primary, padding = 15 } = options;
+        
+        // Section background
+        doc.rect(margin - 10, doc.y - 5, pageWidth + 20, content.height || 60)
+           .fill(backgroundColor);
+        
+        doc.fillColor(titleColor)
+           .font(fonts.bold)
+           .fontSize(12)
+           .text(title, margin, doc.y + 5);
+        
+        doc.moveDown(0.3);
+      };
 
-      // Optional: embed logo. If you have an airline/logoBuffer variable, use doc.image(logoBuffer, ...)
-      // Example (uncomment if you have a local path or buffer):
-      // if (logoBuffer) doc.image(logoBuffer, doc.x, doc.y - 30, { width: 60, height: 60 });
+      const drawDivider = () => {
+        doc.moveTo(margin, doc.y)
+           .lineTo(margin + pageWidth, doc.y)
+           .lineWidth(1)
+           .strokeColor(colors.light)
+           .stroke();
+        doc.moveDown(1);
+      };
 
-      doc.text('E-TICKET', doc.x + 10, doc.y - 30, { continued: true });
-      // right-aligned small meta
-      doc.fontSize(10).text(`Issued: ${new Date().toLocaleString()}`, { align: 'right' });
+      // ======================
+      // HEADER SECTION
+      // ======================
+      
+      // Main header background
+      doc.rect(0, 0, doc.page.width, 100).fill(colors.primary);
+      
+      // Header content
+      doc.fillColor(colors.white)
+         .font(fonts.bold)
+         .fontSize(28)
+         .text('ELECTRONIC TICKET', margin, 25);
+      
+      doc.fontSize(12)
+         .font(fonts.regular)
+         .text(`Issued: ${new Date().toLocaleDateString('en-US', { 
+           weekday: 'long', 
+           year: 'numeric', 
+           month: 'long', 
+           day: 'numeric',
+           hour: '2-digit',
+           minute: '2-digit'
+         })}`, margin, 60, { align: 'right' });
 
       // Move below header
-      doc.moveDown(3);
-      doc.fillColor(primary);
+      doc.y = 120;
 
-      // Top row: left = PNR + booking summary; right = QR
-      const startY = doc.y;
-      // Left column
-      doc.fontSize(12).font('Helvetica-Bold');
-      doc.text(`PNR: ${booking.pnr || ''}`, doc.x, doc.y);
-      doc.moveDown(0.4);
-      doc.fontSize(10).font('Helvetica');
-      doc.text(`Booking ID: ${String(booking._id)}`);
-      doc.text(`Status: ${booking.status || '—'}`);
-      doc.text(`Payment: ${booking.paymentStatus || '—'}`);
-      doc.moveDown(0.6);
+      // ======================
+      // BOOKING REFERENCE SECTION
+      // ======================
+      
+      // PNR Box - Prominent display
+      const pnrBoxHeight = 80;
+      doc.rect(margin, doc.y, pageWidth, pnrBoxHeight)
+         .fill(colors.secondary)
+         .stroke();
 
-      // Flight summary (left column)
+      doc.fillColor(colors.white)
+         .font(fonts.bold)
+         .fontSize(16)
+         .text('BOOKING REFERENCE', margin + 20, doc.y + 15);
+      
+      doc.fontSize(32)
+         .text(booking.pnr || 'N/A', margin + 20, doc.y + 35);
+
+      // Status badges on the right
+      const statusX = margin + pageWidth - 150;
+      doc.fontSize(10)
+         .fillColor(colors.white)
+         .text('STATUS', statusX, doc.y - 45);
+      
+      const statusColor = booking.status === 'confirmed' ? colors.success : colors.accent;
+      doc.rect(statusX, doc.y - 30, 120, 25)
+         .fill(statusColor)
+         .stroke();
+      
+      doc.fillColor(colors.white)
+         .font(fonts.bold)
+         .fontSize(12)
+         .text((booking.status || 'PENDING').toUpperCase(), statusX + 10, doc.y - 20);
+
+      doc.y += pnrBoxHeight + 30;
+
+      // ======================
+      // FLIGHT INFORMATION SECTION
+      // ======================
+      
       if (flight) {
-        doc.font('Helvetica-Bold').fontSize(11).text(`${flight.flightNumber || ''} — ${flight.origin?.code || ''} → ${flight.destination?.code || ''}`);
-        doc.font('Helvetica').fontSize(10);
-        doc.text(`${flight.origin?.name || ''} (${flight.origin?.code || ''})`);
-        doc.text(`${flight.destination?.name || ''} (${flight.destination?.code || ''})`);
-        doc.text(`Departure: ${flight.departureTime ? new Date(flight.departureTime).toLocaleString() : '-'}`);
-        doc.text(`Arrival: ${flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleString() : '-'}`);
+        // Flight header
+        doc.fillColor(colors.primary)
+           .font(fonts.bold)
+           .fontSize(14)
+           .text('FLIGHT DETAILS', margin, doc.y);
+        
+        drawDivider();
+
+        // Flight number and route - Large and prominent
+        doc.font(fonts.bold)
+           .fontSize(24)
+           .fillColor(colors.dark)
+           .text(`${flight.flightNumber || 'N/A'}`, margin, doc.y);
+
+        doc.fontSize(20)
+           .text(`${flight.origin?.code || ''} → ${flight.destination?.code || ''}`, 
+                 margin + 150, doc.y - 25);
+
+        doc.moveDown(1.5);
+
+        // Departure and Arrival in two columns
+        const colWidth = pageWidth / 2;
+        
+        // Departure column
+        doc.rect(margin, doc.y, colWidth - 10, 120).fill(colors.light);
+        doc.fillColor(colors.primary)
+           .font(fonts.bold)
+           .fontSize(12)
+           .text('DEPARTURE', margin + 15, doc.y + 15);
+        
+        doc.fillColor(colors.dark)
+           .font(fonts.regular)
+           .fontSize(16)
+           .text(flight.origin?.name || 'Unknown Airport', margin + 15, doc.y + 35, 
+                 { width: colWidth - 30 });
+        
+        doc.fontSize(14)
+           .fillColor(colors.medium)
+           .text(flight.origin?.code || '', margin + 15, doc.y + 55);
+        
+        if (flight.departureTime) {
+          const depTime = new Date(flight.departureTime);
+          doc.fontSize(18)
+             .fillColor(colors.dark)
+             .font(fonts.bold)
+             .text(depTime.toLocaleTimeString('en-US', { 
+               hour: '2-digit', 
+               minute: '2-digit' 
+             }), margin + 15, doc.y + 75);
+          
+          doc.fontSize(12)
+             .font(fonts.regular)
+             .fillColor(colors.medium)
+             .text(depTime.toLocaleDateString(), margin + 15, doc.y + 100);
+        }
+
+        // Arrival column
+        const arrivalX = margin + colWidth + 10;
+        doc.rect(arrivalX, doc.y - 85, colWidth - 20, 120).fill(colors.light);
+        doc.fillColor(colors.primary)
+           .font(fonts.bold)
+           .fontSize(12)
+           .text('ARRIVAL', arrivalX + 15, doc.y - 70);
+        
+        doc.fillColor(colors.dark)
+           .font(fonts.regular)
+           .fontSize(16)
+           .text(flight.destination?.name || 'Unknown Airport', arrivalX + 15, doc.y - 50, 
+                 { width: colWidth - 50 });
+        
+        doc.fontSize(14)
+           .fillColor(colors.medium)
+           .text(flight.destination?.code || '', arrivalX + 15, doc.y - 30);
+        
+        if (flight.arrivalTime) {
+          const arrTime = new Date(flight.arrivalTime);
+          doc.fontSize(18)
+             .fillColor(colors.dark)
+             .font(fonts.bold)
+             .text(arrTime.toLocaleTimeString('en-US', { 
+               hour: '2-digit', 
+               minute: '2-digit' 
+             }), arrivalX + 15, doc.y - 10);
+          
+          doc.fontSize(12)
+             .font(fonts.regular)
+             .fillColor(colors.medium)
+             .text(arrTime.toLocaleDateString(), arrivalX + 15, doc.y + 15);
+        }
+
+        doc.y += 150;
       }
 
-      // Save current position for QR placement on the right column
-      const rightX = doc.page.margins.left + leftColWidth + 10;
-      const qrY = startY;
+      // ======================
+      // PASSENGER INFORMATION SECTION
+      // ======================
+      
+      doc.fillColor(colors.primary)
+         .font(fonts.bold)
+         .fontSize(14)
+         .text('PASSENGER INFORMATION', margin, doc.y);
+      
+      drawDivider();
 
-      // Draw QR on the right column (try to fit)
-      try {
-        doc.image(qrBuffer, rightX, qrY, { width: qrSize, height: qrSize });
-      } catch (err) {
-        // ignore if QR can't be embedded
+      // Passenger table
+      const passengers = booking.passengers || [];
+      if (passengers.length > 0) {
+        // Table header
+        doc.rect(margin, doc.y, pageWidth, 30).fill(colors.primary);
+        
+        const colWidths = {
+          name: pageWidth * 0.4,
+          passport: pageWidth * 0.25,
+          seat: pageWidth * 0.2,
+          class: pageWidth * 0.15
+        };
+
+        let currentX = margin + 10;
+        doc.fillColor(colors.white)
+           .font(fonts.bold)
+           .fontSize(11);
+
+        doc.text('PASSENGER NAME', currentX, doc.y + 10);
+        currentX += colWidths.name;
+        doc.text('PASSPORT/ID', currentX, doc.y + 10);
+        currentX += colWidths.passport;
+        doc.text('SEAT', currentX, doc.y + 10);
+        currentX += colWidths.seat;
+        doc.text('CLASS', currentX, doc.y + 10);
+
+        doc.moveDown(2);
+
+        // Passenger rows
+        passengers.forEach((passenger, index) => {
+          const rowY = doc.y;
+          const rowHeight = 35;
+          
+          // Alternating row colors
+          const bgColor = index % 2 === 0 ? colors.white : colors.light;
+          doc.rect(margin, rowY, pageWidth, rowHeight).fill(bgColor);
+
+          currentX = margin + 10;
+          doc.fillColor(colors.dark)
+             .font(fonts.regular)
+             .fontSize(11);
+
+          // Passenger name
+          doc.text(passenger.name || `Passenger ${index + 1}`, 
+                   currentX, rowY + 12, { width: colWidths.name - 10 });
+          
+          currentX += colWidths.name;
+          // Passport
+          doc.text(passenger.passport || 'N/A', 
+                   currentX, rowY + 12, { width: colWidths.passport - 10 });
+          
+          currentX += colWidths.passport;
+          // Seat
+          const seatNumber = (booking.seats && booking.seats[index]) || 
+                           (booking.seats && typeof booking.seats === 'string' ? booking.seats : 'N/A');
+          doc.text(seatNumber, currentX, rowY + 12, { width: colWidths.seat - 10 });
+          
+          currentX += colWidths.seat;
+          // Class
+          doc.text('Economy', currentX, rowY + 12); // Default to Economy
+
+          doc.y = rowY + rowHeight;
+        });
+      } else {
+        doc.fillColor(colors.medium)
+           .fontSize(12)
+           .text('No passenger information available', margin, doc.y);
+        doc.moveDown(2);
       }
 
-      // Move cursor under left column (ensure we don't overlap)
-      doc.moveDown(1.5);
+      // ======================
+      // FARE INFORMATION & QR CODE SECTION
+      // ======================
+      
+      const fareQRSectionY = doc.y + 20;
+      
+      // Left side: Fare details
+      doc.fillColor(colors.primary)
+         .font(fonts.bold)
+         .fontSize(14)
+         .text('FARE BREAKDOWN', margin, fareQRSectionY);
+      
+      const fareBoxY = fareQRSectionY + 25;
+      doc.rect(margin, fareBoxY, pageWidth * 0.6, 100).fill(colors.light);
+      
+      doc.fillColor(colors.dark)
+         .font(fonts.regular)
+         .fontSize(12);
+      
+      const fareDetails = [
+        [`Base Fare:`, `${booking.fare || 0} ${process.env.CURRENCY || 'USD'}`],
+        [`Passengers:`, `${booking.passengerCount || passengers.length}`],
+        [`Payment Status:`, `${booking.paymentStatus || 'Pending'}`],
+        [`Booking ID:`, `${String(booking._id).slice(-12)}`]
+      ];
 
-      // Separator line
-      doc.moveTo(doc.x - 2, doc.y).lineTo(doc.page.margins.left + pageWidth + 2, doc.y).lineWidth(0.5).strokeColor('#E6E7E8').stroke();
-      doc.moveDown(0.8);
-
-      // Passenger table header
-      doc.font('Helvetica-Bold').fontSize(11).fillColor(primary).text('Passengers', { continued: false });
-      doc.moveDown(0.4);
-
-      // Table columns: Name | Passport | Seat
-      const col1 = doc.x;
-      const col2 = col1 + (pageWidth * 0.45);
-      const col3 = col2 + (pageWidth * 0.28);
-
-      doc.fontSize(10).font('Helvetica-Bold');
-      doc.text('Name', col1, doc.y, { width: col2 - col1 - 10 });
-      doc.text('Passport', col2, doc.y, { width: col3 - col2 - 10 });
-      doc.text('Seat', col3, doc.y);
-      doc.moveDown(0.3);
-      doc.font('Helvetica').fontSize(10);
-
-      (booking.passengers || []).forEach((p, idx) => {
-        const name = p.name || `Passenger ${idx + 1}`;
-        const passport = p.passport || '-';
-        const seat = (booking.seats && booking.seats[idx]) || (booking.seats && booking.seats.join(', ')) || '-';
-        doc.text(name, col1, doc.y, { width: col2 - col1 - 10 });
-        doc.text(passport, col2, doc.y, { width: col3 - col2 - 10 });
-        doc.text(seat, col3, doc.y);
-        doc.moveDown(0.6);
+      fareDetails.forEach((detail, index) => {
+        const itemY = fareBoxY + 15 + (index * 20);
+        doc.text(detail[0], margin + 15, itemY);
+        doc.text(detail[1], margin + 150, itemY);
       });
 
-      doc.moveDown(0.4);
-
-      // Fare & extra details
-      doc.font('Helvetica-Bold').fontSize(11).text('Fare Details');
-      doc.moveDown(0.3);
-      doc.font('Helvetica').fontSize(10);
-      doc.text(`Fare: ${booking.fare || 0} ${process.env.CURRENCY || 'USD'}`);
-      doc.text(`Passengers: ${booking.passengerCount || (booking.passengers||[]).length}`);
-      doc.moveDown(0.6);
-
-      // If there are any extra metadata, show them
-      if (booking.meta) {
-        doc.font('Helvetica-Bold').fontSize(10).text('Notes');
-        doc.font('Helvetica').fontSize(9).text(JSON.stringify(booking.meta).slice(0, 300));
-        doc.moveDown(0.6);
+      // Right side: QR Code
+      const qrX = margin + pageWidth * 0.65;
+      if (qrBuffer) {
+        doc.fillColor(colors.primary)
+           .font(fonts.bold)
+           .fontSize(12)
+           .text('BOARDING PASS QR CODE', qrX, fareQRSectionY);
+        
+        // QR code with border
+        doc.rect(qrX, fareQRSectionY + 25, 150, 150).stroke(colors.medium);
+        doc.image(qrBuffer, qrX + 10, fareQRSectionY + 35, { width: 130, height: 130 });
+        
+        doc.fillColor(colors.medium)
+           .font(fonts.regular)
+           .fontSize(9)
+           .text('Show this QR code at\ncheck-in and boarding', 
+                 qrX, fareQRSectionY + 180, { align: 'center', width: 150 });
       }
 
-      // Draw a nice box with PNR and instruction
-      const boxTop = doc.y;
-      const boxHeight = 60;
-      doc.roundedRect(doc.x - 2, boxTop, pageWidth + 4, boxHeight, 6).stroke('#E6E7E8');
-      doc.font('Helvetica-Bold').fontSize(14).text(`PNR: ${booking.pnr || ''}`, doc.x + 8, boxTop + 8);
-      doc.font('Helvetica').fontSize(9).text('Show this e-ticket (PDF or QR) at check-in or to gate staff.', doc.x + 8, boxTop + 30);
-      doc.moveDown(4);
+      doc.y = Math.max(fareBoxY + 120, fareQRSectionY + 220);
 
-      // Footer with small terms
-      doc.moveTo(doc.page.margins.left, doc.page.height - doc.page.margins.bottom - 90).lineTo(doc.page.margins.left + pageWidth, doc.page.height - doc.page.margins.bottom - 90).strokeColor('#E6E7E8').lineWidth(0.5).stroke();
-      doc.fontSize(8).fillColor('#6B7280').text('This is an electronic ticket. Please present the QR code or PDF at the airport. Terms & conditions apply.', { align: 'left' });
-      doc.moveDown(0.3);
-      doc.text('If you have any questions, contact support.', { align: 'left' });
+      // ======================
+      // IMPORTANT NOTICES SECTION
+      // ======================
+      
+      doc.moveDown(2);
+      
+      // Important notice box
+      doc.rect(margin, doc.y, pageWidth, 80).fill('#fef2f2').stroke(colors.accent);
+      
+      doc.fillColor(colors.accent)
+         .font(fonts.bold)
+         .fontSize(12)
+         .text('IMPORTANT TRAVEL INFORMATION', margin + 15, doc.y + 15);
+      
+      doc.fillColor(colors.dark)
+         .font(fonts.regular)
+         .fontSize(10)
+         .text('• Please arrive at the airport at least 2 hours before domestic flights and 3 hours before international flights', 
+               margin + 15, doc.y + 35, { width: pageWidth - 30 });
+      doc.text('• Valid photo ID and this e-ticket are required for check-in', 
+               margin + 15, doc.y + 50, { width: pageWidth - 30 });
+      doc.text('• Check-in closes 45 minutes before departure for domestic flights', 
+               margin + 15, doc.y + 65, { width: pageWidth - 30 });
 
-      // Optionally include barcodeToken text at bottom right
-      doc.fontSize(8).fillColor('#374151').text(`Token: ${booking._id ? String(booking._id).slice(-8) : ''}`, { align: 'right' });
+      doc.y += 100;
 
-      // finalize
+      // ======================
+      // FOOTER SECTION
+      // ======================
+      
+      // Footer separator
+      doc.moveTo(margin, doc.y)
+         .lineTo(margin + pageWidth, doc.y)
+         .lineWidth(2)
+         .strokeColor(colors.primary)
+         .stroke();
+      
+      doc.moveDown(1);
+      
+      // Footer text
+      doc.fillColor(colors.medium)
+         .font(fonts.regular)
+         .fontSize(9)
+         .text('This is an electronic ticket. Please present this document or the QR code above for check-in and boarding.', 
+               margin, doc.y, { align: 'center', width: pageWidth });
+      
+      doc.moveDown(0.5);
+      doc.text('For customer support, visit our website or contact your travel agent.', 
+               margin, doc.y, { align: 'center', width: pageWidth });
+      
+      // Version info
+      doc.fontSize(8)
+         .fillColor(colors.light)
+         .text(`Document ID: ${String(booking._id).slice(-8)} | Generated: ${new Date().toISOString()}`, 
+               margin, doc.y + 20, { align: 'center', width: pageWidth });
+
       doc.end();
     } catch (err) {
       reject(err);
     }
   });
 }
-
 
 /**
  * Create a ticket (QR generation + cloudinary upload + PDF generation + upload + Ticket doc)

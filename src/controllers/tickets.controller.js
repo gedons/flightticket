@@ -4,16 +4,20 @@ const Ticket = require('../models/ticket.model');
 const Booking = require('../models/booking.model');
 const Flight = require('../models/flight.model');
 
-const BARCODE_SECRET = process.env.BARCODE_SIGNING_SECRET || process.env.JWT_SECRET || 'change_me_barcode_secret';
+const BARCODE_SECRET = process.env.BARCODE_SIGNING_SECRET || process.env.JWT_SECRET;
+const FRONTEND_BASE = (process.env.FRONTEND_BASE_URL || process.env.CLIENT_BASE_URL || '').replace(/\/+$/, '') || null;
 
 /**
- * Public scan endpoint — verifies token and returns booking + ticket info
+ * Public scan endpoint — verifies token and returns booking + ticket info.
+ * If request appears to be from a browser (Accept: text/html) or query param redirect=true,
+ * redirect to the frontend ticket view page: FRONTEND_BASE + `/tickets/<ticketId>/view?token=<token>`
  */
 exports.scan = async (req, res, next) => {
   try {
     const { token } = req.params;
     if (!token) return res.status(400).json({ message: 'Token required' });
 
+    // verify token
     let payload;
     try {
       payload = jwt.verify(token, BARCODE_SECRET);
@@ -21,17 +25,32 @@ exports.scan = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid or expired token' });
     }
 
+    // find ticket and booking
     const ticket = await Ticket.findOne({ bookingId: payload.ticketId }).lean();
     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
 
     const booking = await Booking.findById(ticket.bookingId).populate('flightId').lean();
     if (!booking) return res.status(404).json({ message: 'Booking not found for ticket' });
 
+    // If the request looks like a browser (Accept header) or user explicitly requested redirect,
+    // and we have FRONTEND_BASE configured, redirect to the frontend ticket page with token query.
+    const acceptHeader = String(req.headers.accept || '').toLowerCase();
+    const wantsRedirect = req.query.redirect === 'true' || acceptHeader.includes('text/html');
+
+    if (wantsRedirect && FRONTEND_BASE) {
+      // prefer redirect to the UI page where the frontend can use the token to fetch ticket data.
+      const ticketId = String(ticket.bookingId || ticket._id);
+      const redirectUrl = `${FRONTEND_BASE}/tickets/${encodeURIComponent(ticketId)}/view?token=${encodeURIComponent(token)}`;
+      return res.redirect(302, redirectUrl);
+    }
+
+    // Otherwise return JSON (used by API clients)
     return res.json({
       ticket: {
         barcodeUrl: ticket.barcodeUrl,
         issuedAt: ticket.issuedAt,
-        eTicketPdfUrl: ticket.eTicketPdfUrl
+        eTicketPdfUrl: ticket.eTicketPdfUrl,
+        meta: ticket.meta || {}
       },
       booking: {
         _id: booking._id,
@@ -40,7 +59,8 @@ exports.scan = async (req, res, next) => {
         paymentStatus: booking.paymentStatus,
         flight: booking.flightId,
         passengers: booking.passengers,
-        seats: booking.seats
+        seats: booking.seats,
+        fare: booking.fare
       }
     });
   } catch (err) {
