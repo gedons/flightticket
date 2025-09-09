@@ -12,7 +12,7 @@ exports.scan = async (req, res, next) => {
     const { token } = req.params;
     if (!token) return res.status(400).json({ message: 'Token required' });
 
-    // verify token
+    // verify token payload
     let payload;
     try {
       payload = jwt.verify(token, BARCODE_SECRET);
@@ -20,14 +20,14 @@ exports.scan = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid or expired token' });
     }
 
-    // find ticket and booking
+    // find the ticket and its booking
     const ticket = await Ticket.findOne({ bookingId: payload.ticketId }).lean();
     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
 
     const booking = await Booking.findById(ticket.bookingId).populate('flightId').lean();
     if (!booking) return res.status(404).json({ message: 'Booking not found for ticket' });
 
-    // If caller asked for JSON explicitly, return JSON:
+    // If caller explicitly requested JSON, return JSON
     if (String(req.query.format || '').toLowerCase() === 'json') {
       return res.json({
         ticket: {
@@ -49,14 +49,14 @@ exports.scan = async (req, res, next) => {
       });
     }
 
-    // Otherwise redirect to frontend if FRONTEND_BASE is set:
+    // Otherwise redirect to the frontend UI (if configured). This is the key change.
     if (FRONTEND_BASE) {
       const ticketId = String(ticket.bookingId || ticket._id);
       const redirectUrl = `${FRONTEND_BASE}/tickets/${encodeURIComponent(ticketId)}/view?token=${encodeURIComponent(token)}`;
       return res.redirect(302, redirectUrl);
     }
 
-    // Fallback: return JSON if no FRONTEND_BASE configured
+    // Fallback: if no FRONTEND_BASE configured, return JSON.
     return res.json({
       ticket: {
         barcodeUrl: ticket.barcodeUrl,

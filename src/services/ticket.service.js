@@ -27,7 +27,6 @@ function createBarcodeToken(payload = {}) {
  * Helper: return a Buffer of a pdf created for this booking,
  * embedding booking details and the QR (qrBuffer).
  */
-// replace the existing createPdfBuffer with this function
 async function createPdfBuffer(booking, flight, qrBuffer) {
   return new Promise(async (resolve, reject) => {
     try {
