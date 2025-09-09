@@ -7,6 +7,8 @@ const { isAdmin } = require('../middlewares/role.middleware');
 const validate = require('../middlewares/validate.middleware');
 const { bookingCreateSchema } = require('../validators/booking.validator');
 
+router.get('/lookup', bookingsController.lookupByPnr);
+
 // Create booking (authenticated user)
 router.post('/', authenticate, validate(bookingCreateSchema), bookingsController.createBooking);
 
@@ -25,6 +27,5 @@ router.post('/:id/confirm', authenticate, isAdmin, bookingsController.confirmBoo
 // Cancel booking (owner or admin)
 router.post('/:id/cancel', authenticate, bookingsController.cancelBooking);
 
-router.post('/lookup', bookingsController.lookupByPnr);
 
 module.exports = router;

@@ -51,7 +51,7 @@ exports.scan = async (req, res, next) => {
 
     // Otherwise redirect to the frontend UI (if configured). This is the key change.
     if (FRONTEND_BASE) {
-      const ticketId = String(ticket.bookingId || ticket._id);
+      const ticketId = String(ticket._id);
       const redirectUrl = `${FRONTEND_BASE}/tickets/${encodeURIComponent(ticketId)}/view`;
       return res.redirect(302, redirectUrl);
     }
