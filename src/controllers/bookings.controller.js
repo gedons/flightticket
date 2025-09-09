@@ -1,6 +1,7 @@
 // src/controllers/bookings.controller.js
 const bookingService = require('../services/booking.service');
 const Booking = require('../models/booking.model');
+const Ticket = require('../models/ticket.model'); 
 const { generatePNR } = require('../utils/pnr.util');
 
 /**
@@ -184,7 +185,7 @@ exports.lookupByPnr = async (req, res, next) => {
     const pnr = String(pnrRaw).trim();
     if (!pnr) return res.status(400).json({ message: 'pnr is required' });
 
-    // find booking case-insensitively
+    // find booking case-insensitively and populate flight
     const booking = await Booking.findOne({ pnr: { $regex: `^${pnr}$`, $options: 'i' } })
       .populate('flightId')
       .lean();
@@ -193,26 +194,33 @@ exports.lookupByPnr = async (req, res, next) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // allow only public viewing for confirmed/paid bookings
+    // Only allow public viewing for confirmed/paid/issued bookings
     const status = String(booking.status || '').toLowerCase();
     const payment = String(booking.paymentStatus || '').toLowerCase();
     const isPublic = ['confirmed', 'paid', 'issued'].includes(status) || ['paid'].includes(payment);
+
     if (!isPublic) {
       return res.status(403).json({ message: 'Booking is not available for public viewing' });
     }
 
-    // find associated ticket (if any)
+    // Find associated ticket, if any
     const ticket = await Ticket.findOne({ bookingId: booking._id }).lean();
 
-    // return consistent payload
+    // Mask sensitive passenger fields for public view (optional — uncomment if you want)
+    if (booking.passengers && Array.isArray(booking.passengers)) {
+      booking.passengers = booking.passengers.map(p => ({
+        name: p.name,
+        passport: p.passport ? `${String(p.passport).slice(0, 2)}****${String(p.passport).slice(-2)}` : undefined,
+        email: p.email ? p.email.replace(/(.{2}).+(@.+)/, '$1****$2') : undefined
+      }));
+    }
+
     return res.json({
       booking,
       ticket: ticket || null
     });
   } catch (err) {
-    // Log the error server-side for easier debugging
     console.error('lookupByPnr error:', err && err.stack ? err.stack : err);
     return next(err);
   }
 };
-
