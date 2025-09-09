@@ -169,3 +169,38 @@ exports.markAsPaid = async (req, res, next) => {
     next(err);
   }
 };
+
+
+/**
+ * Public lookup by PNR:
+ * GET /api/bookings/lookup?pnr=1JD13Y
+ *
+ * Returns { booking, ticket } only if booking exists and is confirmed (or paid).
+ */
+exports.lookupByPnr = async (req, res, next) => {
+  try {
+    const pnr = String(req.query.pnr || '').trim();
+    if (!pnr) return res.status(400).json({ message: 'pnr is required' });
+
+    // case-insensitive find
+    const booking = await Booking.findOne({ pnr: { $regex: `^${pnr}$`, $options: 'i' } })
+      .populate('flightId') // include flight info
+      .lean();
+
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // Only allow public reveal if booking is confirmed
+    // adapt this logic if you want to allow 'paid' or other statuses
+    if (!['confirmed', 'paid'].includes((booking.status || '').toLowerCase()) && !['paid'].includes((booking.paymentStatus || '').toLowerCase())) {
+      return res.status(403).json({ message: 'Booking is not available for public viewing' });
+    }
+
+    // find associated ticket if one exists
+    const ticket = await Ticket.findOne({ bookingId: booking._id }).lean();
+
+    return res.json({ booking, ticket: ticket || null });
+  } catch (err) {
+    next(err);
+  }
+};
+

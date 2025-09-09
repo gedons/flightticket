@@ -25,4 +25,6 @@ router.post('/:id/confirm', authenticate, isAdmin, bookingsController.confirmBoo
 // Cancel booking (owner or admin)
 router.post('/:id/cancel', authenticate, bookingsController.cancelBooking);
 
+router.post('/lookup', bookingsController.lookupByPnr);
+
 module.exports = router;
