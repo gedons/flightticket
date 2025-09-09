@@ -122,7 +122,7 @@ async function createPdfBuffer(booking, flight, qrBuffer) {
       doc.fillColor(colors.white)
          .font(fonts.bold)
          .fontSize(32)
-         .text('SKYLINE', margin, 30);
+         .text('AMERICAN', margin, 30);
       
       doc.fontSize(12)
          .font(fonts.regular)
