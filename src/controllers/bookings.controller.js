@@ -170,37 +170,49 @@ exports.markAsPaid = async (req, res, next) => {
   }
 };
 
-
 /**
  * Public lookup by PNR:
  * GET /api/bookings/lookup?pnr=1JD13Y
  *
- * Returns { booking, ticket } only if booking exists and is confirmed (or paid).
+ * Returns { booking, ticket } only if booking exists and is confirmed/paid.
  */
 exports.lookupByPnr = async (req, res, next) => {
   try {
-    const pnr = String(req.query.pnr || '').trim();
+    const pnrRaw = req.query.pnr;
+    if (!pnrRaw) return res.status(400).json({ message: 'pnr is required' });
+
+    const pnr = String(pnrRaw).trim();
     if (!pnr) return res.status(400).json({ message: 'pnr is required' });
 
-    // case-insensitive find
+    // find booking case-insensitively
     const booking = await Booking.findOne({ pnr: { $regex: `^${pnr}$`, $options: 'i' } })
-      .populate('flightId') // include flight info
+      .populate('flightId')
       .lean();
 
-    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
 
-    // Only allow public reveal if booking is confirmed
-    // adapt this logic if you want to allow 'paid' or other statuses
-    if (!['confirmed', 'paid'].includes((booking.status || '').toLowerCase()) && !['paid'].includes((booking.paymentStatus || '').toLowerCase())) {
+    // allow only public viewing for confirmed/paid bookings
+    const status = String(booking.status || '').toLowerCase();
+    const payment = String(booking.paymentStatus || '').toLowerCase();
+    const isPublic = ['confirmed', 'paid', 'issued'].includes(status) || ['paid'].includes(payment);
+    if (!isPublic) {
       return res.status(403).json({ message: 'Booking is not available for public viewing' });
     }
 
-    // find associated ticket if one exists
+    // find associated ticket (if any)
     const ticket = await Ticket.findOne({ bookingId: booking._id }).lean();
 
-    return res.json({ booking, ticket: ticket || null });
+    // return consistent payload
+    return res.json({
+      booking,
+      ticket: ticket || null
+    });
   } catch (err) {
-    next(err);
+    // Log the error server-side for easier debugging
+    console.error('lookupByPnr error:', err && err.stack ? err.stack : err);
+    return next(err);
   }
 };
 
