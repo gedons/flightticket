@@ -1,4 +1,4 @@
-// src/controllers/tickets.controller.js
+// src/controllers/tickets.controller.js (scan handler - always redirect unless ?format=json)
 const jwt = require('jsonwebtoken');
 const Ticket = require('../models/ticket.model');
 const Booking = require('../models/booking.model');
@@ -7,11 +7,6 @@ const Flight = require('../models/flight.model');
 const BARCODE_SECRET = process.env.BARCODE_SIGNING_SECRET || process.env.JWT_SECRET;
 const FRONTEND_BASE = (process.env.FRONTEND_BASE_URL || process.env.CLIENT_BASE_URL || '').replace(/\/+$/, '') || null;
 
-/**
- * Public scan endpoint — verifies token and returns booking + ticket info.
- * If request appears to be from a browser (Accept: text/html) or query param redirect=true,
- * redirect to the frontend ticket view page: FRONTEND_BASE + `/tickets/<ticketId>/view?token=<token>`
- */
 exports.scan = async (req, res, next) => {
   try {
     const { token } = req.params;
@@ -32,19 +27,36 @@ exports.scan = async (req, res, next) => {
     const booking = await Booking.findById(ticket.bookingId).populate('flightId').lean();
     if (!booking) return res.status(404).json({ message: 'Booking not found for ticket' });
 
-    // If the request looks like a browser (Accept header) or user explicitly requested redirect,
-    // and we have FRONTEND_BASE configured, redirect to the frontend ticket page with token query.
-    const acceptHeader = String(req.headers.accept || '').toLowerCase();
-    const wantsRedirect = req.query.redirect === 'true' || acceptHeader.includes('text/html');
+    // If caller asked for JSON explicitly, return JSON:
+    if (String(req.query.format || '').toLowerCase() === 'json') {
+      return res.json({
+        ticket: {
+          barcodeUrl: ticket.barcodeUrl,
+          issuedAt: ticket.issuedAt,
+          eTicketPdfUrl: ticket.eTicketPdfUrl,
+          meta: ticket.meta || {}
+        },
+        booking: {
+          _id: booking._id,
+          pnr: booking.pnr,
+          status: booking.status,
+          paymentStatus: booking.paymentStatus,
+          flight: booking.flightId,
+          passengers: booking.passengers,
+          seats: booking.seats,
+          fare: booking.fare
+        }
+      });
+    }
 
-    if (wantsRedirect && FRONTEND_BASE) {
-      // prefer redirect to the UI page where the frontend can use the token to fetch ticket data.
+    // Otherwise redirect to frontend if FRONTEND_BASE is set:
+    if (FRONTEND_BASE) {
       const ticketId = String(ticket.bookingId || ticket._id);
       const redirectUrl = `${FRONTEND_BASE}/tickets/${encodeURIComponent(ticketId)}/view?token=${encodeURIComponent(token)}`;
       return res.redirect(302, redirectUrl);
     }
 
-    // Otherwise return JSON (used by API clients)
+    // Fallback: return JSON if no FRONTEND_BASE configured
     return res.json({
       ticket: {
         barcodeUrl: ticket.barcodeUrl,
@@ -67,6 +79,7 @@ exports.scan = async (req, res, next) => {
     next(err);
   }
 };
+
 
 /**
  * Admin: list all tickets
