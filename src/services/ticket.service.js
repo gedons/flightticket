@@ -24,7 +24,7 @@ function createBarcodeToken(payload = {}) {
 }
 
 /**
- * Helper: return a Buffer of a pdf created for this booking,
+ * Enhanced Helper: return a Buffer of a professionally styled pdf created for this booking,
  * embedding booking details and the QR (qrBuffer).
  */
 async function createPdfBuffer(booking, flight, qrBuffer) {
@@ -32,7 +32,7 @@ async function createPdfBuffer(booking, flight, qrBuffer) {
     try {
       const doc = new PDFDocument({ 
         size: 'A4', 
-        margin: 50,
+        margin: 40,
         bufferPages: true,
         info: {
           Title: `E-Ticket - ${booking.pnr || booking._id}`,
@@ -46,403 +46,584 @@ async function createPdfBuffer(booking, flight, qrBuffer) {
       doc.on('end', () => resolve(Buffer.concat(bufs)));
 
       // Page dimensions and layout constants
-      const pageWidth = doc.page.width - 100; // 50px margins on each side
-      const margin = 50;
+      const pageWidth = doc.page.width - 80; // 40px margins on each side
+      const margin = 40;
+      const centerX = margin + pageWidth / 2;
       
-      // Color palette
+      // Enhanced color palette - Modern airline branding
       const colors = {
-        primary: '#1e3a8a',      // Deep blue
-        secondary: '#3b82f6',    // Bright blue
-        accent: '#ef4444',       // Red for important info
-        dark: '#1f2937',         // Dark gray
-        medium: '#6b7280',       // Medium gray
-        light: '#f3f4f6',        // Light gray
-        white: '#ffffff',
-        success: '#10b981'       // Green for confirmed
+        primary: '#0F172A',      // Slate 900 - Professional dark
+        secondary: '#1E40AF',    // Blue 700 - Trust and reliability
+        accent: '#F59E0B',       // Amber 500 - Premium gold accent
+        danger: '#EF4444',       // Red 500 - Urgent information
+        success: '#059669',      // Emerald 600 - Confirmed status
+        dark: '#1F2937',         // Gray 800 - Dark text
+        medium: '#6B7280',       // Gray 500 - Medium text
+        light: '#F3F4F6',        // Gray 100 - Light backgrounds
+        lighter: '#F9FAFB',      // Gray 50 - Very light
+        white: '#FFFFFF',
+        border: '#E5E7EB'        // Gray 200 - Borders
       };
 
-      // Typography helpers
+      // Typography system
       const fonts = {
         regular: 'Helvetica',
         bold: 'Helvetica-Bold',
         oblique: 'Helvetica-Oblique'
       };
 
-      // Helper functions
-      const drawSection = (title, content, options = {}) => {
-        const { backgroundColor = colors.light, titleColor = colors.primary, padding = 15 } = options;
+      // Utility functions
+      const drawCard = (x, y, width, height, options = {}) => {
+        const { 
+          fillColor = colors.white, 
+          strokeColor = colors.border,
+          strokeWidth = 1,
+          radius = 8
+        } = options;
         
-        // Section background
-        doc.rect(margin - 10, doc.y - 5, pageWidth + 20, content.height || 60)
-           .fill(backgroundColor);
-        
-        doc.fillColor(titleColor)
-           .font(fonts.bold)
-           .fontSize(12)
-           .text(title, margin, doc.y + 5);
-        
-        doc.moveDown(0.3);
+        // Create rounded rectangle effect
+        doc.roundedRect(x, y, width, height, radius)
+           .fillAndStroke(fillColor, strokeColor)
+           .lineWidth(strokeWidth);
       };
 
-      const drawDivider = () => {
-        doc.moveTo(margin, doc.y)
-           .lineTo(margin + pageWidth, doc.y)
-           .lineWidth(1)
-           .strokeColor(colors.light)
-           .stroke();
-        doc.moveDown(1);
+      const drawGradientHeader = (height = 120) => {
+        // Create gradient effect with multiple rectangles
+        const steps = 10;
+        for (let i = 0; i < steps; i++) {
+          const alpha = 1 - (i * 0.1);
+          const stepHeight = height / steps;
+          doc.rect(0, i * stepHeight, doc.page.width, stepHeight)
+             .fillColor(colors.primary, alpha)
+             .fill();
+        }
+      };
+
+      const drawIconText = (icon, text, x, y, options = {}) => {
+        const { fontSize = 10, color = colors.dark, width = 200 } = options;
+        doc.fillColor(color)
+           .fontSize(fontSize)
+           .text(`${icon} ${text}`, x, y, { width });
       };
 
       // ======================
-      // HEADER SECTION
+      // HEADER SECTION - Enhanced with gradient and logo space
       // ======================
       
-      // Main header background
-      doc.rect(0, 0, doc.page.width, 100).fill(colors.primary);
+      // Gradient background
+      drawGradientHeader(140);
       
-      // Header content
+      // Header overlay for better contrast
+      doc.rect(0, 0, doc.page.width, 140)
+         .fill(colors.primary)
+         .fillOpacity(0.9);
+
+      // Airline branding area (left side)
       doc.fillColor(colors.white)
          .font(fonts.bold)
-         .fontSize(28)
-         .text('ELECTRONIC TICKET', margin, 25);
+         .fontSize(32)
+         .text('SKYLINE', margin, 30);
       
       doc.fontSize(12)
          .font(fonts.regular)
+         .fillColor(colors.accent)
+         .text('A I R L I N E S', margin, 65);
+
+      // Document title (right side)
+      doc.fillColor(colors.white)
+         .font(fonts.bold)
+         .fontSize(24)
+         .text('E-TICKET', margin, 30, { align: 'right', width: pageWidth });
+      
+      doc.fontSize(11)
+         .font(fonts.regular)
+         .fillColor(colors.lighter)
          .text(`Issued: ${new Date().toLocaleDateString('en-US', { 
-           weekday: 'long', 
+           weekday: 'short', 
            year: 'numeric', 
-           month: 'long', 
+           month: 'short', 
            day: 'numeric',
            hour: '2-digit',
-           minute: '2-digit'
-         })}`, margin, 60, { align: 'right' });
+           minute: '2-digit',
+           hour12: true
+         })}`, margin, 55, { align: 'right', width: pageWidth });
 
-      // Move below header
-      doc.y = 120;
-
-      // ======================
-      // BOOKING REFERENCE SECTION
-      // ======================
-      
-      // PNR Box - Prominent display
-      const pnrBoxHeight = 80;
-      doc.rect(margin, doc.y, pageWidth, pnrBoxHeight)
-         .fill(colors.secondary)
+      // Decorative line
+      doc.moveTo(margin, 100)
+         .lineTo(margin + pageWidth, 100)
+         .lineWidth(2)
+         .strokeColor(colors.accent)
          .stroke();
 
-      doc.fillColor(colors.white)
-         .font(fonts.bold)
-         .fontSize(16)
-         .text('BOOKING REFERENCE', margin + 20, doc.y + 15);
-      
-      doc.fontSize(32)
-         .text(booking.pnr || 'N/A', margin + 20, doc.y + 35);
+      // Reset position
+      doc.y = 160;
 
-      // Status badges on the right
-      const statusX = margin + pageWidth - 150;
-      doc.fontSize(10)
-         .fillColor(colors.white)
-         .text('STATUS', statusX, doc.y - 45);
+      // ======================
+      // PNR & STATUS SECTION - Modern card design
+      // ======================
       
-      const statusColor = booking.status === 'confirmed' ? colors.success : colors.accent;
-      doc.rect(statusX, doc.y - 30, 120, 25)
-         .fill(statusColor)
-         .stroke();
-      
+      const pnrCardHeight = 90;
+      drawCard(margin, doc.y, pageWidth, pnrCardHeight, { 
+        fillColor: colors.secondary,
+        strokeColor: colors.secondary
+      });
+
+      // PNR Section
       doc.fillColor(colors.white)
-         .font(fonts.bold)
+         .font(fonts.regular)
          .fontSize(12)
-         .text((booking.status || 'PENDING').toUpperCase(), statusX + 10, doc.y - 20);
+         .text('BOOKING REFERENCE', margin + 25, doc.y + 20);
+      
+      doc.fontSize(36)
+         .font(fonts.bold)
+         .text(booking.pnr || 'PENDING', margin + 25, doc.y + 35);
 
-      doc.y += pnrBoxHeight + 30;
+      // Status badge (top right of card)
+      const statusText = (booking.status || 'pending').toUpperCase();
+      const statusColor = booking.status === 'confirmed' ? colors.success : 
+                         booking.status === 'cancelled' ? colors.danger : colors.accent;
+      
+      const badgeWidth = 100;
+      const badgeX = margin + pageWidth - badgeWidth - 25;
+      
+      doc.roundedRect(badgeX, doc.y + 20, badgeWidth, 30, 15)
+         .fill(statusColor);
+      
+      doc.fillColor(colors.white)
+         .font(fonts.bold)
+         .fontSize(11)
+         .text(statusText, badgeX, doc.y + 30, { align: 'center', width: badgeWidth });
+
+      // Passenger count indicator
+      doc.fillColor(colors.lighter)
+         .font(fonts.regular)
+         .fontSize(10)
+         .text(`${booking.passengerCount || (booking.passengers || []).length || 1} Passenger(s)`, 
+               badgeX, doc.y + 55, { align: 'center', width: badgeWidth });
+
+      doc.y += pnrCardHeight + 25;
 
       // ======================
-      // FLIGHT INFORMATION SECTION
+      // FLIGHT INFORMATION - Enhanced layout
       // ======================
       
       if (flight) {
-        // Flight header
+        // Section header
         doc.fillColor(colors.primary)
            .font(fonts.bold)
-           .fontSize(14)
+           .fontSize(16)
            .text('FLIGHT DETAILS', margin, doc.y);
         
-        drawDivider();
+        // Underline accent
+        doc.moveTo(margin, doc.y + 5)
+           .lineTo(margin + 120, doc.y + 5)
+           .lineWidth(3)
+           .strokeColor(colors.accent)
+           .stroke();
 
-        // Flight number and route - Large and prominent
-        doc.font(fonts.bold)
-           .fontSize(24)
-           .fillColor(colors.dark)
-           .text(`${flight.flightNumber || 'N/A'}`, margin, doc.y);
+        doc.y += 25;
 
-        doc.fontSize(20)
-           .text(`${flight.origin?.code || ''} → ${flight.destination?.code || ''}`, 
-                 margin + 150, doc.y - 25);
+        // Flight route card
+        const routeCardHeight = 80;
+        drawCard(margin, doc.y, pageWidth, routeCardHeight, { 
+          fillColor: colors.lighter,
+          strokeColor: colors.border
+        });
 
-        doc.moveDown(1.5);
-
-        // Departure and Arrival in two columns
-        const colWidth = pageWidth / 2;
-        
-        // Departure column
-        doc.rect(margin, doc.y, colWidth - 10, 120).fill(colors.light);
+        // Flight number (prominent)
         doc.fillColor(colors.primary)
            .font(fonts.bold)
-           .fontSize(12)
-           .text('DEPARTURE', margin + 15, doc.y + 15);
-        
+           .fontSize(28)
+           .text(flight.flightNumber || 'TBA', margin + 25, doc.y + 15);
+
+        // Route with arrow
+        const routeY = doc.y + 45;
+        doc.fontSize(20)
+           .fillColor(colors.secondary)
+           .text(flight.origin?.code || 'DEP', margin + 25, routeY);
+
+        // Flight arrow
+        doc.fontSize(16)
+           .fillColor(colors.medium)
+           .text('✈', centerX - 10, routeY);
+
+        doc.fontSize(20)
+           .fillColor(colors.secondary)
+           .text(flight.destination?.code || 'ARR', margin + pageWidth - 80, routeY);
+
+        // Aircraft type (if available)
+        if (flight.aircraft) {
+          doc.fillColor(colors.medium)
+             .font(fonts.regular)
+             .fontSize(10)
+             .text(`Aircraft: ${flight.aircraft}`, margin + pageWidth - 150, doc.y + 15);
+        }
+
+        doc.y += routeCardHeight + 20;
+
+        // Departure and Arrival cards - Side by side
+        const timeCardWidth = (pageWidth - 15) / 2;
+        const timeCardHeight = 140;
+
+        // Departure Card
+        drawCard(margin, doc.y, timeCardWidth, timeCardHeight, { 
+          fillColor: colors.white,
+          strokeColor: colors.border
+        });
+
+        doc.fillColor(colors.secondary)
+           .font(fonts.bold)
+           .fontSize(14)
+           .text('DEPARTURE', margin + 20, doc.y + 20);
+
         doc.fillColor(colors.dark)
            .font(fonts.regular)
-           .fontSize(16)
-           .text(flight.origin?.name || 'Unknown Airport', margin + 15, doc.y + 35, 
-                 { width: colWidth - 30 });
-        
-        doc.fontSize(14)
+           .fontSize(12)
+           .text(flight.origin?.name || 'Airport Name TBA', 
+                 margin + 20, doc.y + 45, { width: timeCardWidth - 40 });
+
+        doc.fontSize(11)
            .fillColor(colors.medium)
-           .text(flight.origin?.code || '', margin + 15, doc.y + 55);
-        
+           .text(`Terminal: ${flight.origin?.terminal || 'TBA'}`, margin + 20, doc.y + 65);
+
         if (flight.departureTime) {
           const depTime = new Date(flight.departureTime);
-          doc.fontSize(18)
-             .fillColor(colors.dark)
+          doc.fontSize(24)
+             .fillColor(colors.primary)
              .font(fonts.bold)
              .text(depTime.toLocaleTimeString('en-US', { 
                hour: '2-digit', 
-               minute: '2-digit' 
-             }), margin + 15, doc.y + 75);
+               minute: '2-digit',
+               hour12: false 
+             }), margin + 20, doc.y + 85);
           
-          doc.fontSize(12)
+          doc.fontSize(11)
              .font(fonts.regular)
              .fillColor(colors.medium)
-             .text(depTime.toLocaleDateString(), margin + 15, doc.y + 100);
+             .text(depTime.toLocaleDateString('en-US', {
+               weekday: 'short',
+               month: 'short',
+               day: 'numeric'
+             }), margin + 20, doc.y + 115);
         }
 
-        // Arrival column
-        const arrivalX = margin + colWidth + 10;
-        doc.rect(arrivalX, doc.y - 85, colWidth - 20, 120).fill(colors.light);
-        doc.fillColor(colors.primary)
+        // Arrival Card
+        const arrivalX = margin + timeCardWidth + 15;
+        drawCard(arrivalX, doc.y - timeCardHeight, timeCardWidth, timeCardHeight, { 
+          fillColor: colors.white,
+          strokeColor: colors.border
+        });
+
+        doc.fillColor(colors.secondary)
            .font(fonts.bold)
-           .fontSize(12)
-           .text('ARRIVAL', arrivalX + 15, doc.y - 70);
-        
+           .fontSize(14)
+           .text('ARRIVAL', arrivalX + 20, doc.y - timeCardHeight + 20);
+
         doc.fillColor(colors.dark)
            .font(fonts.regular)
-           .fontSize(16)
-           .text(flight.destination?.name || 'Unknown Airport', arrivalX + 15, doc.y - 50, 
-                 { width: colWidth - 50 });
-        
-        doc.fontSize(14)
+           .fontSize(12)
+           .text(flight.destination?.name || 'Airport Name TBA', 
+                 arrivalX + 20, doc.y - timeCardHeight + 45, 
+                 { width: timeCardWidth - 40 });
+
+        doc.fontSize(11)
            .fillColor(colors.medium)
-           .text(flight.destination?.code || '', arrivalX + 15, doc.y - 30);
-        
+           .text(`Terminal: ${flight.destination?.terminal || 'TBA'}`, 
+                 arrivalX + 20, doc.y - timeCardHeight + 65);
+
         if (flight.arrivalTime) {
           const arrTime = new Date(flight.arrivalTime);
-          doc.fontSize(18)
-             .fillColor(colors.dark)
+          doc.fontSize(24)
+             .fillColor(colors.primary)
              .font(fonts.bold)
              .text(arrTime.toLocaleTimeString('en-US', { 
                hour: '2-digit', 
-               minute: '2-digit' 
-             }), arrivalX + 15, doc.y - 10);
+               minute: '2-digit',
+               hour12: false 
+             }), arrivalX + 20, doc.y - timeCardHeight + 85);
           
-          doc.fontSize(12)
+          doc.fontSize(11)
              .font(fonts.regular)
              .fillColor(colors.medium)
-             .text(arrTime.toLocaleDateString(), arrivalX + 15, doc.y + 15);
+             .text(arrTime.toLocaleDateString('en-US', {
+               weekday: 'short',
+               month: 'short',
+               day: 'numeric'
+             }), arrivalX + 20, doc.y - timeCardHeight + 115);
         }
 
-        doc.y += 150;
+        // Flight duration (center between cards)
+        if (flight.departureTime && flight.arrivalTime) {
+          const duration = new Date(flight.arrivalTime) - new Date(flight.departureTime);
+          const hours = Math.floor(duration / (1000 * 60 * 60));
+          const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
+          
+          doc.fillColor(colors.accent)
+             .font(fonts.bold)
+             .fontSize(10)
+             .text(`${hours}h ${minutes}m`, centerX - 25, doc.y - 70, 
+                   { align: 'center', width: 50 });
+          
+          doc.fillColor(colors.medium)
+             .font(fonts.regular)
+             .fontSize(8)
+             .text('Duration', centerX - 25, doc.y - 55, 
+                   { align: 'center', width: 50 });
+        }
+
+        doc.y += 25;
       }
 
       // ======================
-      // PASSENGER INFORMATION SECTION
+      // PASSENGER INFORMATION - Modern table design
       // ======================
       
       doc.fillColor(colors.primary)
          .font(fonts.bold)
-         .fontSize(14)
+         .fontSize(16)
          .text('PASSENGER INFORMATION', margin, doc.y);
       
-      drawDivider();
+      // Underline accent
+      doc.moveTo(margin, doc.y + 5)
+         .lineTo(margin + 180, doc.y + 5)
+         .lineWidth(3)
+         .strokeColor(colors.accent)
+         .stroke();
 
-      // Passenger table
+      doc.y += 25;
+
       const passengers = booking.passengers || [];
       if (passengers.length > 0) {
-        // Table header
-        doc.rect(margin, doc.y, pageWidth, 30).fill(colors.primary);
+        // Modern table design
+        const tableY = doc.y;
+        const rowHeight = 45;
+        const headerHeight = 35;
         
-        const colWidths = {
-          name: pageWidth * 0.4,
-          passport: pageWidth * 0.25,
-          seat: pageWidth * 0.2,
-          class: pageWidth * 0.15
-        };
+        // Table container
+        const tableHeight = headerHeight + (passengers.length * rowHeight);
+        drawCard(margin, tableY, pageWidth, tableHeight, {
+          fillColor: colors.white,
+          strokeColor: colors.border
+        });
 
-        let currentX = margin + 10;
-        doc.fillColor(colors.white)
+        // Column definitions
+        const columns = [
+          { title: 'PASSENGER NAME', width: pageWidth * 0.35, align: 'left' },
+          { title: 'DOCUMENT ID', width: pageWidth * 0.25, align: 'left' },
+          { title: 'SEAT', width: pageWidth * 0.15, align: 'center' },
+          { title: 'CLASS', width: pageWidth * 0.25, align: 'center' }
+        ];
+
+        // Table header
+        doc.rect(margin, tableY, pageWidth, headerHeight)
+           .fill(colors.light);
+
+        let currentX = margin + 15;
+        doc.fillColor(colors.dark)
            .font(fonts.bold)
            .fontSize(11);
 
-        doc.text('PASSENGER NAME', currentX, doc.y + 10);
-        currentX += colWidths.name;
-        doc.text('PASSPORT/ID', currentX, doc.y + 10);
-        currentX += colWidths.passport;
-        doc.text('SEAT', currentX, doc.y + 10);
-        currentX += colWidths.seat;
-        doc.text('CLASS', currentX, doc.y + 10);
-
-        doc.moveDown(2);
+        columns.forEach(col => {
+          doc.text(col.title, currentX, tableY + 12, { 
+            width: col.width - 10, 
+            align: col.align 
+          });
+          currentX += col.width;
+        });
 
         // Passenger rows
         passengers.forEach((passenger, index) => {
-          const rowY = doc.y;
-          const rowHeight = 35;
+          const rowY = tableY + headerHeight + (index * rowHeight);
           
           // Alternating row colors
-          const bgColor = index % 2 === 0 ? colors.white : colors.light;
-          doc.rect(margin, rowY, pageWidth, rowHeight).fill(bgColor);
+          if (index % 2 === 1) {
+            doc.rect(margin, rowY, pageWidth, rowHeight)
+               .fill(colors.lighter);
+          }
 
-          currentX = margin + 10;
+          currentX = margin + 15;
           doc.fillColor(colors.dark)
              .font(fonts.regular)
              .fontSize(11);
 
           // Passenger name
           doc.text(passenger.name || `Passenger ${index + 1}`, 
-                   currentX, rowY + 12, { width: colWidths.name - 10 });
-          
-          currentX += colWidths.name;
-          // Passport
-          doc.text(passenger.passport || 'N/A', 
-                   currentX, rowY + 12, { width: colWidths.passport - 10 });
-          
-          currentX += colWidths.passport;
+                   currentX, rowY + 15, { 
+                     width: columns[0].width - 10,
+                     align: columns[0].align 
+                   });
+          currentX += columns[0].width;
+
+          // Document ID
+          doc.text(passenger.passport || passenger.documentId || 'Not provided', 
+                   currentX, rowY + 15, { 
+                     width: columns[1].width - 10,
+                     align: columns[1].align 
+                   });
+          currentX += columns[1].width;
+
           // Seat
           const seatNumber = (booking.seats && booking.seats[index]) || 
-                           (booking.seats && typeof booking.seats === 'string' ? booking.seats : 'N/A');
-          doc.text(seatNumber, currentX, rowY + 12, { width: colWidths.seat - 10 });
-          
-          currentX += colWidths.seat;
-          // Class
-          doc.text('Economy', currentX, rowY + 12); // Default to Economy
+                           (booking.seats && typeof booking.seats === 'string' ? booking.seats : 'TBA');
+          doc.text(seatNumber, currentX, rowY + 15, { 
+            width: columns[2].width - 10,
+            align: columns[2].align 
+          });
+          currentX += columns[2].width;
 
-          doc.y = rowY + rowHeight;
+          // Class
+          doc.text(passenger.class || flight?.class || 'Economy', 
+                   currentX, rowY + 15, { 
+                     width: columns[3].width - 10,
+                     align: columns[3].align 
+                   });
         });
+
+        doc.y = tableY + tableHeight + 25;
       } else {
+        drawCard(margin, doc.y, pageWidth, 60, { 
+          fillColor: colors.lighter,
+          strokeColor: colors.border
+        });
+        
         doc.fillColor(colors.medium)
            .fontSize(12)
-           .text('No passenger information available', margin, doc.y);
-        doc.moveDown(2);
+           .text('No passenger information available', margin + 25, doc.y + 25);
+        doc.y += 85;
       }
 
       // ======================
-      // FARE INFORMATION & QR CODE SECTION
+      // BOTTOM SECTION - Fare & QR Code
       // ======================
       
-      const fareQRSectionY = doc.y + 20;
-      
-      // Left side: Fare details
+      const bottomSectionY = doc.y;
+      const fareCardWidth = pageWidth * 0.55;
+      const qrCardWidth = pageWidth * 0.4;
+
+      // Fare Information Card
+      drawCard(margin, bottomSectionY, fareCardWidth, 160, {
+        fillColor: colors.white,
+        strokeColor: colors.border
+      });
+
       doc.fillColor(colors.primary)
          .font(fonts.bold)
          .fontSize(14)
-         .text('FARE BREAKDOWN', margin, fareQRSectionY);
-      
-      const fareBoxY = fareQRSectionY + 25;
-      doc.rect(margin, fareBoxY, pageWidth * 0.6, 100).fill(colors.light);
-      
-      doc.fillColor(colors.dark)
-         .font(fonts.regular)
-         .fontSize(12);
-      
-      const fareDetails = [
-        [`Base Fare:`, `${booking.fare || 0} ${process.env.CURRENCY || 'USD'}`],
-        [`Passengers:`, `${booking.passengerCount || passengers.length}`],
-        [`Payment Status:`, `${booking.paymentStatus || 'Pending'}`],
-        [`Booking ID:`, `${String(booking._id).slice(-12)}`]
+         .text('BOOKING DETAILS', margin + 20, bottomSectionY + 20);
+
+      const fareItems = [
+        { label: 'Base Fare:', value: `${booking.currency || '$'}${booking.fare || '0.00'}` },
+        { label: 'Passengers:', value: `${booking.passengerCount || passengers.length || 1}` },
+        { label: 'Payment Status:', value: booking.paymentStatus || 'Pending' },
+        { label: 'Booking Date:', value: booking.createdAt ? 
+          new Date(booking.createdAt).toLocaleDateString() : 'N/A' },
+        { label: 'Confirmation:', value: booking.confirmationNumber || 'Pending' }
       ];
 
-      fareDetails.forEach((detail, index) => {
-        const itemY = fareBoxY + 15 + (index * 20);
-        doc.text(detail[0], margin + 15, itemY);
-        doc.text(detail[1], margin + 150, itemY);
+      fareItems.forEach((item, index) => {
+        const itemY = bottomSectionY + 50 + (index * 18);
+        doc.fillColor(colors.medium)
+           .font(fonts.regular)
+           .fontSize(10)
+           .text(item.label, margin + 20, itemY);
+        
+        doc.fillColor(colors.dark)
+           .font(fonts.bold)
+           .text(item.value, margin + 120, itemY);
       });
 
-      // Right side: QR Code
-      const qrX = margin + pageWidth * 0.65;
+      // QR Code Card
+      const qrCardX = margin + fareCardWidth + 15;
       if (qrBuffer) {
+        drawCard(qrCardX, bottomSectionY, qrCardWidth, 160, {
+          fillColor: colors.white,
+          strokeColor: colors.border
+        });
+
         doc.fillColor(colors.primary)
            .font(fonts.bold)
            .fontSize(12)
-           .text('BOARDING PASS QR CODE', qrX, fareQRSectionY);
-        
-        // QR code with border
-        doc.rect(qrX, fareQRSectionY + 25, 150, 150).stroke(colors.medium);
-        doc.image(qrBuffer, qrX + 10, fareQRSectionY + 35, { width: 130, height: 130 });
-        
+           .text('MOBILE BOARDING PASS', qrCardX + 15, bottomSectionY + 15, {
+             align: 'center',
+             width: qrCardWidth - 30
+           });
+
+        // QR code
+        const qrSize = 90;
+        const qrX = qrCardX + (qrCardWidth - qrSize) / 2;
+        doc.image(qrBuffer, qrX, bottomSectionY + 35, { 
+          width: qrSize, 
+          height: qrSize 
+        });
+
         doc.fillColor(colors.medium)
            .font(fonts.regular)
            .fontSize(9)
-           .text('Show this QR code at\ncheck-in and boarding', 
-                 qrX, fareQRSectionY + 180, { align: 'center', width: 150 });
+           .text('Present at check-in\nand security', 
+                 qrCardX + 15, bottomSectionY + 135, {
+                   align: 'center',
+                   width: qrCardWidth - 30
+                 });
       }
 
-      doc.y = Math.max(fareBoxY + 120, fareQRSectionY + 220);
+      doc.y = bottomSectionY + 180;
 
       // ======================
-      // IMPORTANT NOTICES SECTION
+      // IMPORTANT NOTICES
       // ======================
       
-      doc.moveDown(2);
-      
-      // Important notice box
-      doc.rect(margin, doc.y, pageWidth, 80).fill('#fef2f2').stroke(colors.accent);
-      
+      drawCard(margin, doc.y, pageWidth, 100, {
+        fillColor: '#FEF3CD', // Warm yellow background
+        strokeColor: colors.accent
+      });
+
       doc.fillColor(colors.accent)
          .font(fonts.bold)
          .fontSize(12)
-         .text('IMPORTANT TRAVEL INFORMATION', margin + 15, doc.y + 15);
-      
-      doc.fillColor(colors.dark)
-         .font(fonts.regular)
-         .fontSize(10)
-         .text('• Please arrive at the airport at least 2 hours before domestic flights and 3 hours before international flights', 
-               margin + 15, doc.y + 35, { width: pageWidth - 30 });
-      doc.text('• Valid photo ID and this e-ticket are required for check-in', 
-               margin + 15, doc.y + 50, { width: pageWidth - 30 });
-      doc.text('• Check-in closes 45 minutes before departure for domestic flights', 
-               margin + 15, doc.y + 65, { width: pageWidth - 30 });
+         .text('⚠ IMPORTANT TRAVEL INFORMATION', margin + 20, doc.y + 15);
 
-      doc.y += 100;
+      const notices = [
+        'Check-in opens 24 hours before departure and closes 45 minutes prior',
+        'Arrive at airport 2-3 hours early (domestic/international)',
+        'Valid government-issued photo ID required for all passengers'
+      ];
+
+      notices.forEach((notice, index) => {
+        doc.fillColor(colors.dark)
+           .font(fonts.regular)
+           .fontSize(9)
+           .text(`• ${notice}`, margin + 20, doc.y + 35 + (index * 15), {
+             width: pageWidth - 40
+           });
+      });
+
+      doc.y += 120;
 
       // ======================
-      // FOOTER SECTION
+      // FOOTER
       // ======================
       
-      // Footer separator
+      // Decorative footer line
       doc.moveTo(margin, doc.y)
          .lineTo(margin + pageWidth, doc.y)
          .lineWidth(2)
-         .strokeColor(colors.primary)
+         .strokeColor(colors.accent)
          .stroke();
-      
-      doc.moveDown(1);
-      
-      // Footer text
+
+      doc.y += 15;
+
+      // Footer content
       doc.fillColor(colors.medium)
          .font(fonts.regular)
          .fontSize(9)
-         .text('This is an electronic ticket. Please present this document or the QR code above for check-in and boarding.', 
+         .text('This is a valid electronic ticket. Save or print for your records.', 
                margin, doc.y, { align: 'center', width: pageWidth });
-      
-      doc.moveDown(0.5);
-      doc.text('For customer support, visit our website or contact your travel agent.', 
+
+      doc.y += 15;
+      doc.fillColor(colors.light)
+         .fontSize(8)
+         .text(`Document ID: ${String(booking._id).slice(-8).toUpperCase()} | Generated: ${new Date().toLocaleString()}`, 
                margin, doc.y, { align: 'center', width: pageWidth });
-      
-      // Version info
-      doc.fontSize(8)
-         .fillColor(colors.light)
-         .text(`Document ID: ${String(booking._id).slice(-8)} | Generated: ${new Date().toISOString()}`, 
-               margin, doc.y + 20, { align: 'center', width: pageWidth });
 
       doc.end();
     } catch (err) {
