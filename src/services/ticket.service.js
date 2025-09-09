@@ -121,7 +121,7 @@ async function createPdfBuffer(booking, flight, qrBuffer) {
       // Airline branding area (left side)
       doc.fillColor(colors.white)
          .font(fonts.bold)
-         .fontSize(32)
+         .fontSize(32)                                                                                 
          .text('AMERICAN', margin, 30);
       
       doc.fontSize(12)
