@@ -1,8 +1,10 @@
 // src/controllers/bookings.controller.js
 const bookingService = require('../services/booking.service');
 const Booking = require('../models/booking.model');
-const Ticket = require('../models/ticket.model'); 
-const { generatePNR } = require('../utils/pnr.util');
+const Ticket = require('../models/ticket.model');
+const Flight = require('../models/flight.model');
+const mongoose = require('mongoose');
+const ticketService = require('../services/ticket.service');
 
 /**
  * POST /api/bookings
@@ -109,25 +111,20 @@ exports.listUserBookings = async (req, res, next) => {
  *
  * Body (optional): { confirmByAdmin: true }  OR the payment webhook will confirm by booking id.
  */
+
 exports.confirmBooking = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    // Only admin allowed
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin only' });
-    }
-
-    const result = await bookingService.confirmBooking(id);
-    // result: { booking, ticket }
-    return res.json({
-      message: 'Booking confirmed',
-      booking: result.booking,
-      ticket: result.ticket
-    });
+    const id = req.params.id;
+    // mark booking confirmed (your existing logic)
+    const booking = await Booking.findByIdAndUpdate(id, { status: 'confirmed' }, { new: true });
+    // generate ticket
+    const ticket = await ticketService.createTicketForBooking(booking._id);
+    return res.json({ booking, ticket });
   } catch (err) {
     next(err);
   }
 };
+
 
 /**
  * POST /api/bookings/:id/cancel
@@ -171,12 +168,7 @@ exports.markAsPaid = async (req, res, next) => {
   }
 };
 
-/**
- * Public lookup by PNR:
- * GET /api/bookings/lookup?pnr=1JD13Y
- *
- * Returns { booking, ticket } only if booking exists and is confirmed/paid.
- */
+// Public lookup by PNR: GET /api/bookings/lookup?pnr=XXXX
 exports.lookupByPnr = async (req, res, next) => {
   try {
     const pnrRaw = req.query.pnr;
@@ -185,9 +177,8 @@ exports.lookupByPnr = async (req, res, next) => {
     const pnr = String(pnrRaw).trim();
     if (!pnr) return res.status(400).json({ message: 'pnr is required' });
 
-    // find booking case-insensitively and populate flight
+    // find booking case-insensitively
     const booking = await Booking.findOne({ pnr: { $regex: `^${pnr}$`, $options: 'i' } })
-      .populate('flightId')
       .lean();
 
     if (!booking) {
@@ -198,26 +189,29 @@ exports.lookupByPnr = async (req, res, next) => {
     const status = String(booking.status || '').toLowerCase();
     const payment = String(booking.paymentStatus || '').toLowerCase();
     const isPublic = ['confirmed', 'paid', 'issued'].includes(status) || ['paid'].includes(payment);
-
     if (!isPublic) {
       return res.status(403).json({ message: 'Booking is not available for public viewing' });
     }
 
-    // Find associated ticket, if any
+    // populate flight details
+    const flight = booking.flightId ? await Flight.findById(booking.flightId).lean() : null;
+
+    // find associated ticket
     const ticket = await Ticket.findOne({ bookingId: booking._id }).lean();
 
-    // Mask sensitive passenger fields for public view (optional — uncomment if you want)
+    // Optionally mask sensitive fields for public view (passports)
     if (booking.passengers && Array.isArray(booking.passengers)) {
       booking.passengers = booking.passengers.map(p => ({
         name: p.name,
-        passport: p.passport ? `${String(p.passport).slice(0, 2)}****${String(p.passport).slice(-2)}` : undefined,
+        passport: p.passport ? (`${String(p.passport).slice(0,2)}****${String(p.passport).slice(-2)}`) : undefined,
         email: p.email ? p.email.replace(/(.{2}).+(@.+)/, '$1****$2') : undefined
       }));
     }
 
     return res.json({
       booking,
-      ticket: ticket || null
+      ticket: ticket || null,
+      flight: flight || null
     });
   } catch (err) {
     console.error('lookupByPnr error:', err && err.stack ? err.stack : err);

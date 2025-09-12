@@ -1,13 +1,15 @@
 // src/models/ticket.model.js
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
-const ticketSchema = new mongoose.Schema({
-  bookingId: { type: mongoose.Types.ObjectId, ref: 'Booking', required: true, unique: true },
-  barcodeUrl: { type: String },     // Cloudinary secure url to the QR image
-  barcodeToken: { type: String },   // signed token (JWT/HMAC) embedded in QR
-  issuedAt: { type: Date },
-  eTicketPdfUrl: { type: String },  // future: PDF e-ticket
-  meta: { type: Object }
+const TicketSchema = new Schema({
+  bookingId: { type: Schema.Types.ObjectId, required: true, index: true, ref: 'Booking' },
+  barcodeUrl: { type: String },
+  eTicketPdfUrl: { type: String },
+  issuedAt: { type: Date, default: Date.now },
+  scanUrl: { type: String },
+  pdfMetadata: { type: Schema.Types.Mixed, default: {} },
+  ticketVersion: { type: Number, default: 1 }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Ticket', ticketSchema);
+module.exports = mongoose.models.Ticket || mongoose.model('Ticket', TicketSchema);

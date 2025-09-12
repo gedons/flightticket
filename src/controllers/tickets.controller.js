@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const Ticket = require('../models/ticket.model');
 const Booking = require('../models/booking.model');
 const Flight = require('../models/flight.model');
+const ticketService = require('../services/ticket.service');
 
 const BARCODE_SECRET = process.env.BARCODE_SIGNING_SECRET || process.env.JWT_SECRET;
 const FRONTEND_BASE = (process.env.FRONTEND_BASE_URL || process.env.CLIENT_BASE_URL || '').replace(/\/+$/, '') || null;
@@ -160,6 +161,18 @@ exports.getMyTicket = async (req, res, next) => {
 
     const flight = await Flight.findById(booking.flightId).lean();
     res.json({ ticket, booking: { ...booking, flight } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+exports.regeneratePdf = async (req, res, next) => {
+  try {
+    const ticketId = req.params.id;
+    await ticketService.regeneratePdfForTicket(ticketId);
+    const ticket = await require('../models/ticket.model').findById(ticketId).lean();
+    return res.json({ ticket });
   } catch (err) {
     next(err);
   }

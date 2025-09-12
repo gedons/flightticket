@@ -24,6 +24,7 @@
     "qrcode": "^1.x",
     "streamifier": "^0.1.1",
     "stripe": "^11.x",
+    "uuid": "^13.0.0",
     "winston": "^3.x"
   },
   "devDependencies": {

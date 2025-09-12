@@ -1,33 +1,49 @@
 // src/models/flight.model.js
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
-const fareClassSchema = new mongoose.Schema({
-  name: { type: String, required: true },       // e.g., 'economy', 'business'
-  price: { type: Number, required: true },
-  seatsAvailable: { type: Number, required: true, min: 0 }
+const LocationSchema = new Schema({
+  code: { type: String },
+  name: { type: String },
+  city: { type: String },
+  lat: { type: Number },
+  lon: { type: Number }
 }, { _id: false });
 
-const airportRefSchema = new mongoose.Schema({
-  code: { type: String, required: true, uppercase: true }, // IATA code
+const SegmentSchema = new Schema({
+  segmentIndex: { type: Number, default: 0 },
+  origin: { type: LocationSchema, required: true },
+  destination: { type: LocationSchema, required: true },
+  departureTime: { type: Date },
+  arrivalTime: { type: Date },
+  departureTimezone: { type: String },
+  arrivalTimezone: { type: String },
+  terminalOrigin: { type: String },
+  terminalDestination: { type: String },
+  gateOrigin: { type: String },
+  gateDestination: { type: String },
+  travelTimeMinutes: { type: Number }, 
+  distanceKm: { type: Number },      
+  aircraft: { type: String },
+  cabin: { type: String },
+  stops: { type: Number, default: 0 }
+}, { _id: false });
+
+const AirlineSchema = new Schema({
   name: String,
-  city: String,
-  country: String
+  code: String,
+  logoUrl: String
 }, { _id: false });
 
-const flightSchema = new mongoose.Schema({
-  flightNumber: { type: String, required: true, index: true },
-  origin: { type: airportRefSchema, required: true },
-  destination: { type: airportRefSchema, required: true },
-  departureTime: { type: Date, required: true, index: true },
-  arrivalTime: { type: Date, required: true },
-  aircraftId: { type: mongoose.Types.ObjectId, ref: 'Aircraft' },
-  fareClasses: { type: [fareClassSchema], default: [] },
-  totalSeats: { type: Number, required: true, min: 0 },
-  status: { type: String, enum: ['scheduled','delayed','cancelled'], default: 'scheduled' },
-  metadata: { type: Object }
+const FlightSchema = new Schema({
+  airline: { type: AirlineSchema, default: {} },
+  flightNumber: { type: String, required: true },
+  segments: { type: [SegmentSchema], default: [] },
+  fareClasses: { type: Array, default: [] },
+  totalSeats: { type: Number, default: 0 },
+  amenities: { type: [String], default: [] }, 
+  status: { type: String, default: 'scheduled' },
+  metadata: { type: Schema.Types.Mixed, default: {} }
 }, { timestamps: true });
 
-// compound index to support search
-flightSchema.index({ 'origin.code': 1, 'destination.code': 1, departureTime: 1 });
-
-module.exports = mongoose.model('Flight', flightSchema);
+module.exports = mongoose.models.Flight || mongoose.model('Flight', FlightSchema);

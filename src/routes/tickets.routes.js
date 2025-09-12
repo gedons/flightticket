@@ -16,5 +16,6 @@ router.get('/:id', authenticate, ticketsController.getMyTicket);
 router.get('/', authenticate, isAdmin, ticketsController.adminList);
 router.get('/admin/:id', authenticate, isAdmin, ticketsController.adminGet);
 router.delete('/admin/:id', authenticate, isAdmin, ticketsController.adminDelete);
+router.post('/admin/:id/regenerate-pdf', authenticate, isAdmin, ticketsController.regeneratePdf);
 
 module.exports = router;

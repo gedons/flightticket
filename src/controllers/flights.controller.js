@@ -2,45 +2,116 @@
 const Flight = require('../models/flight.model');
 const mongoose = require('mongoose');
 
-/**
- * Create a flight (admin)
- */
+
+
+// Helper validator (same logic but with logs)
+function validateFlightPayload(body) {
+  const errors = [];
+
+  if (!body || typeof body !== 'object') {
+    errors.push('body');
+    return errors;
+  }
+
+  if (!body.flightNumber || String(body.flightNumber).trim().length === 0) {
+    errors.push('flightNumber');
+  }
+
+  if (!Array.isArray(body.segments) || body.segments.length === 0) {
+    errors.push('segments (array, at least one element)');
+  } else {
+    body.segments.forEach((seg, idx) => {
+      const prefix = `segments[${idx}]`;
+      if (!seg || typeof seg !== 'object') {
+        errors.push(`${prefix} (object required)`);
+        return;
+      }
+      if (!seg.origin || !seg.origin.code) errors.push(`${prefix}.origin.code`);
+      if (!seg.destination || !seg.destination.code) errors.push(`${prefix}.destination.code`);
+      if (!seg.departureTime) errors.push(`${prefix}.departureTime`);
+      if (!seg.arrivalTime) errors.push(`${prefix}.arrivalTime`);
+    });
+  }
+
+  if (body.fareClasses && !Array.isArray(body.fareClasses)) {
+    errors.push('fareClasses (must be an array)');
+  }
+
+  return errors;
+}
+
 exports.createFlight = async (req, res, next) => {
   try {
-    const {
-      flightNumber,
-      origin,
-      destination,
-      departureTime,
-      arrivalTime,
-      aircraftId,
-      fareClasses,
-      totalSeats,
-      metadata
-    } = req.body;
+    // Diagnostic logging to confirm this code runs on the server
+    console.log('--- createFlight called ---');
+    console.log('Request body:', JSON.stringify(req.body && Object.keys(req.body).length ? req.body : '<EMPTY>'));
 
-    // basic validation
-    if (!flightNumber || !origin || !destination || !departureTime || !arrivalTime || !totalSeats) {
-      return res.status(400).json({ message: 'Missing required flight fields' });
+    const payload = req.body || {};
+    const validationErrors = validateFlightPayload(payload);
+
+    // Log validation details
+    if (validationErrors.length) {
+      console.log('createFlight validationErrors:', validationErrors);
+      return res.status(400).json({
+        message: 'Missing or invalid required flight fields',
+        missing: validationErrors
+      });
     }
 
-    const flight = await Flight.create({
-      flightNumber,
-      origin,
-      destination,
-      departureTime: new Date(departureTime),
-      arrivalTime: new Date(arrivalTime),
-      aircraftId,
-      fareClasses: fareClasses || [],
-      totalSeats,
-      metadata
-    });
+    // Build flight doc
+    const doc = {
+      airline: payload.airline || {},
+      flightNumber: String(payload.flightNumber).trim(),
+      segments: payload.segments.map((s, i) => ({
+        segmentIndex: s.segmentIndex ?? i + 1,
+        origin: {
+          code: (s.origin && s.origin.code) ? String(s.origin.code).trim().toUpperCase() : undefined,
+          name: s.origin?.name || '',
+          city: s.origin?.city || '',
+          lat: s.origin?.lat,
+          lon: s.origin?.lon
+        },
+        destination: {
+          code: (s.destination && s.destination.code) ? String(s.destination.code).trim().toUpperCase() : undefined,
+          name: s.destination?.name || '',
+          city: s.destination?.city || '',
+          lat: s.destination?.lat,
+          lon: s.destination?.lon
+        },
+        departureTime: s.departureTime ? new Date(s.departureTime) : undefined,
+        arrivalTime: s.arrivalTime ? new Date(s.arrivalTime) : undefined,
+        departureTimezone: s.departureTimezone || '',
+        arrivalTimezone: s.arrivalTimezone || '',
+        terminalOrigin: s.terminalOrigin || '',
+        terminalDestination: s.terminalDestination || '',
+        gateOrigin: s.gateOrigin || '',
+        gateDestination: s.gateDestination || '',
+        travelTimeMinutes: s.travelTimeMinutes || null,
+        distanceKm: s.distanceKm || null,
+        aircraft: s.aircraft || '',
+        cabin: s.cabin || '',
+        stops: s.stops || 0
+      })),
+      fareClasses: Array.isArray(payload.fareClasses) ? payload.fareClasses : [],
+      amenities: Array.isArray(payload.amenities) ? payload.amenities : [],
+      totalSeats: payload.totalSeats || 0,
+      status: payload.status || 'scheduled',
+      metadata: payload.metadata || {}
+    };
 
+    // console.log('Creating flight with flightNumber:', doc.flightNumber, 'segments:', doc.segments.length);
+    const flight = await Flight.create(doc);
+    // console.log('Flight created:', flight._id);
     return res.status(201).json(flight);
   } catch (err) {
-    return next(err);
+    console.error('createFlight error:', err && err.stack ? err.stack : err);
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Flight validation failed', details: err.errors });
+    }
+    next(err);
   }
 };
+
 
 /**
  * Update a flight (admin)
