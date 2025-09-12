@@ -579,73 +579,89 @@ async function uploadBufferToCloudinary(buffer, resourceType = 'auto', publicId 
 async function createTicketForBooking(bookingId) {
   if (!bookingId) throw new Error('bookingId required');
 
+  // 1) fetch booking and flight
   const booking = await Booking.findById(bookingId).lean();
   if (!booking) throw new Error('Booking not found');
 
-  const flight = booking.flightId ? await Flight.findById(booking.flightId).lean() : null;
+  const flight = booking.flightId
+    ? (typeof booking.flightId === 'object' ? booking.flightId : await Flight.findById(booking.flightId).lean())
+    : null;
 
-  // create a token payload
-  const payload = { ticketId: String(booking._id), pnr: booking.pnr || null };
+  // 2) create or ensure ticket document exists BEFORE generating token/QR/PDF
+  let ticketDoc = await Ticket.findOne({ bookingId: booking._id });
+  const now = new Date();
+  if (!ticketDoc) {
+    ticketDoc = await Ticket.create({
+      bookingId: booking._id,
+      issuedAt: now,
+      ticketVersion: 0
+    });
+  }
+
+  // 3) create signed barcode token that references the ticketId (not bookingId)
+  const payload = { ticketId: String(ticketDoc._id), pnr: booking.pnr || null };
   const token = createBarcodeToken(payload);
+  
+  // e.g. https://your-frontend.app/tickets/<ticketId>/view?token=<signedToken>
+  const scanUrlForQr = `${FRONTEND_BASE}/tickets/${encodeURIComponent(String(ticketDoc._id))}/view`;
 
-  // create scanUrl that points to the frontend ticket view
-  const scanUrlForQr = `${FRONTEND_BASE}/tickets/${encodeURIComponent(String(booking._id))}/view`;
-
-  // generate QR and optionally fetch logo
+  // 5) generate QR buffer and optionally fetch airline logo
   const [qrBuffer, logoBuffer] = await Promise.all([
     generateQrBuffer(scanUrlForQr),
     fetchLogoBuffer(flight?.airline?.logoUrl)
   ]);
 
-  // generate PDF buffer (includes QR + logo)
-  const pdfBuffer = await createPdfBuffer({ 
-    booking, 
-    flight, 
-    ticketBarcodeBuffer: qrBuffer, 
-    airlineLogoBuffer: logoBuffer 
+  // 6) generate PDF buffer (use your existing createPdfBuffer)
+  const pdfBuffer = await createPdfBuffer({
+    booking,
+    flight,
+    ticketBarcodeBuffer: qrBuffer,
+    airlineLogoBuffer: logoBuffer
   });
 
-  // upload assets to cloudinary with proper settings
-  const basename = `ticket_${String(booking._id)}_${Date.now()}`;
-  
+  // 7) Upload assets to Cloudinary
+  const timestamp = Date.now();
+  const basename = `ticket_${String(ticketDoc._id)}_${timestamp}`;
+
+  // NOTE: using your uploadBufferToCloudinary(buffer, resourceType, publicId) signature
   const [qrRes, pdfRes] = await Promise.all([
     uploadBufferToCloudinary(qrBuffer, 'image', `${basename}_qr`),
-    uploadBufferToCloudinary(pdfBuffer, 'raw', `${basename}_pdf`) // 'raw' for PDF files
+    // include .pdf in the public id to help Cloudinary detect format
+    uploadBufferToCloudinary(pdfBuffer, 'raw', `${basename}_pdf.pdf`)
   ]);
 
-  console.log('Upload results:', { qrUrl: qrRes.secure_url, pdfUrl: pdfRes.secure_url });
+  // 8) Build an attachment (download) URL that forces a .pdf filename in the browser (optional)
+  let pdfDownloadUrl = pdfRes.secure_url;
+  try {
+    pdfDownloadUrl = cloudinary.url(pdfRes.public_id, {
+      resource_type: 'raw',
+      secure: true,
+      transformation: [{ flags: 'attachment', format: 'pdf' }]
+    });
+  } catch (err) {
+    // fallback to secure_url
+    console.warn('cloudinary.url builder failed, falling back to secure_url', err?.message || err);
+  }
 
-  // create or update Ticket document
-  let ticketDoc = await Ticket.findOne({ bookingId: booking._id });
+  // 9) Update ticket document with all metadata (store token & scan URL)
   const issuedAt = new Date();
   const ticketData = {
     bookingId: booking._id,
     barcodeUrl: qrRes.secure_url,
-    eTicketPdfUrl: pdfRes.secure_url,
+    eTicketPdfUrl: pdfDownloadUrl,   // download-forced URL
+    rawPdfUrl: pdfRes.secure_url,    // raw url
     issuedAt,
-    scanUrl: scanUrlForQr,
-    pdfMetadata: { 
-      qr: {
-        public_id: qrRes.public_id,
-        url: qrRes.secure_url,
-        format: qrRes.format
-      }, 
-      pdf: {
-        public_id: pdfRes.public_id,
-        url: pdfRes.secure_url,
-        format: pdfRes.format,
-        bytes: pdfRes.bytes
-      }
+    scanUrl: scanUrlForQr,           // IMPORTANT: uses ticket id + token
+    barcodeToken: token,             // signed JWT referencing ticketId
+    pdfMetadata: {
+      qr: qrRes,
+      pdf: pdfRes
     },
-    ticketVersion: (ticketDoc?.ticketVersion || 0) + 1
+    ticketVersion: (ticketDoc.ticketVersion || 0) + 1
   };
 
-  if (ticketDoc) {
-    await Ticket.updateOne({ _id: ticketDoc._id }, { $set: ticketData });
-    ticketDoc = await Ticket.findById(ticketDoc._id).lean();
-  } else {
-    ticketDoc = await Ticket.create(ticketData);
-  }
+  await Ticket.updateOne({ _id: ticketDoc._id }, { $set: ticketData });
+  ticketDoc = await Ticket.findById(ticketDoc._id).lean();
 
   return ticketDoc;
 }
